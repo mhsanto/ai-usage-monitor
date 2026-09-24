@@ -1,0 +1,52 @@
+name: Build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Test
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Lint
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Build installer and exe
+        run: npx tauri build
+
+      - name: Collect downloads
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item (Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe).FullName "dist/AI-Usage-Monitor_${version}_x64-setup.exe"
+          Copy-Item src-tauri/target/release/ai-usage-tray.exe "dist/AI-Usage-Monitor_${version}_x64-portable.exe"
+          Push-Location dist
+          Get-ChildItem *.exe | ForEach-Object { "{0} *{1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name } | Set-Content SHA256SUMS.txt -Encoding ascii
+          Pop-Location
+          Copy-Item src-tauri/Cargo.lock dist/Cargo.lock
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-usage-monitor
+          path: dist/

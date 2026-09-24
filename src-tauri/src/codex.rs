@@ -121,7 +121,7 @@ fn meter(window: Window) -> Meter {
     }
 }
 
-fn window_label(minutes: Option<u64>) -> (String, String) {
+pub(crate) fn window_label(minutes: Option<u64>) -> (String, String) {
     match minutes {
         Some(300) => ("5-hour window".into(), "5h".into()),
         Some(10080) => ("Weekly window".into(), "Week".into()),

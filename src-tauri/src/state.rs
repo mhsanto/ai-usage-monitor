@@ -57,15 +57,49 @@ pub struct Provider {
     pub note: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetEvent {
+    /// Epoch milliseconds.
+    pub at: i64,
+    pub ok: bool,
+    pub message: String,
+}
+
+impl ResetEvent {
+    pub fn succeeded(message: impl Into<String>) -> Self {
+        Self { at: now_ms(), ok: true, message: message.into() }
+    }
+
+    pub fn failed(message: impl Into<String>) -> Self {
+        Self { at: now_ms(), ok: false, message: message.into() }
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexResets {
+    /// Numbers came from OpenAI just now, not from Codex's session log.
+    pub live: bool,
+    pub available: i64,
+    /// Epoch milliseconds of the soonest-expiring reset.
+    pub next_expiry: Option<i64>,
+    pub last_event: Option<ResetEvent>,
+    pub status: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub claude: Provider,
     pub codex: Provider,
+    pub codex_resets: CodexResets,
 }
 
 pub enum Trigger {
     ClaudeActivity,
     CodexActivity,
+    CodexChanged,
     PopoverOpened,
     Refresh,
 }
@@ -80,16 +114,15 @@ pub struct Popover {
 pub struct AppState {
     pub snapshot: Mutex<Snapshot>,
     pub popover: Mutex<Popover>,
+    /// Held while a reset is chosen and spent, so the button and the auto rule never both spend one.
+    pub reset_lock: tokio::sync::Mutex<()>,
     trigger: UnboundedSender<Trigger>,
 }
 
 impl AppState {
     pub fn new(trigger: UnboundedSender<Trigger>) -> Self {
-        let snapshot = Snapshot {
-            claude: Provider { available: true, ..Default::default() },
-            codex: Provider::default(),
-        };
-        Self { snapshot: Mutex::new(snapshot), popover: Mutex::default(), trigger }
+        let snapshot = Snapshot { claude: Provider { available: true, ..Default::default() }, ..Default::default() };
+        Self { snapshot: Mutex::new(snapshot), popover: Mutex::default(), reset_lock: tokio::sync::Mutex::new(()), trigger }
     }
 }
 

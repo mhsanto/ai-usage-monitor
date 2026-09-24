@@ -1,6 +1,6 @@
 [package]
 name = "ai-usage-tray"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [build-dependencies]
@@ -16,6 +16,10 @@ notify = "8"
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["macros", "sync", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
 
 [profile.release]
 codegen-units = 1

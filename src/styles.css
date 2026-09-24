@@ -10,6 +10,7 @@
   --warning: #f59e0b;
   --critical: #ef4444;
   --error: #fbbf24;
+  --ok: #4ade80;
   --hover: #242424;
   color-scheme: dark;
 }
@@ -27,6 +28,7 @@
     --warning: #d97706;
     --critical: #dc2626;
     --error: #b45309;
+    --ok: #15803d;
     --hover: #e9e9e9;
     color-scheme: light;
   }
@@ -125,6 +127,75 @@ html, body {
 .error, .note, .foot { font-size: 11px; margin: 8px 0 0; }
 .error { color: var(--error); }
 .foot { font-size: 10px; }
+
+.resets {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.reset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+.confirm-text { font-size: 11px; margin: 0; }
+.btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+.btn {
+  font: inherit;
+  font-size: 11px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--hover);
+  color: var(--text);
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--normal); border-color: var(--normal); color: #fff; }
+.btn:disabled { opacity: 0.6; cursor: default; }
+.btn:focus-visible { outline: 2px solid var(--normal); outline-offset: 1px; }
+.event { font-size: 11px; margin: 6px 0 0; }
+.event.ok { color: var(--ok); }
+.event.error { color: var(--error); }
+
+#auto-reset { margin-top: 8px; }
+.settings summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  list-style: none;
+  cursor: pointer;
+}
+.settings summary::-webkit-details-marker { display: none; }
+.settings summary .card-name::before { content: "▸ "; color: var(--muted); }
+.settings[open] summary .card-name::before { content: "▾ "; }
+.settings[open] summary { margin-bottom: 8px; }
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+.setting + .setting { margin-top: 8px; }
+.setting.sub { padding-left: 22px; color: var(--muted); }
+.check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.check input { margin: 0; accent-color: var(--normal); }
+.num { display: flex; align-items: center; gap: 3px; white-space: nowrap; color: var(--muted); }
+.num input {
+  width: 46px;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 11px;
+  text-align: right;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+.num input:focus-visible { outline: 2px solid var(--normal); outline-offset: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   .fill { transition: none; }

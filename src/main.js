@@ -6,14 +6,35 @@ const PROVIDERS = [
   { key: "codex", name: "Codex" },
 ];
 
-const refreshButton = document.getElementById("refresh");
+const $ = (id) => document.getElementById(id);
+const refreshButton = $("refresh");
+const auto = {
+  card: $("auto-reset"),
+  summary: $("auto-summary"),
+  weeklyEnabled: $("weekly-enabled"),
+  weeklyPercent: $("weekly-percent"),
+  skipHours: $("skip-hours"),
+  fiveEnabled: $("five-enabled"),
+  fiveMinutes: $("five-minutes"),
+  status: $("auto-status"),
+};
+
 let snapshot = null;
 let spinTimer = null;
+let confirmingReset = false;
+let spendingReset = false;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function button(text, className, onClick) {
+  const node = el("button", className, text);
+  node.type = "button";
+  node.addEventListener("click", onClick);
   return node;
 }
 
@@ -50,9 +71,48 @@ function meter(m) {
 
 function footnote(key, data) {
   if (!data.asOf) return null;
-  if (key === "codex") return `From your last Codex session, ${day(data.asOf)} ${clock(data.asOf)}`;
+  if (key === "codex" && !snapshot.codexResets.live) return `From your last Codex session, ${day(data.asOf)} ${clock(data.asOf)}`;
   if (data.error) return `Last good numbers from ${clock(data.asOf)}`;
   return null;
+}
+
+function resetsLabel(resets) {
+  if (resets.available <= 0) return "No resets available";
+  const count = resets.available === 1 ? "1 reset available" : `${resets.available} resets available`;
+  return resets.nextExpiry ? `${count} · expires ${day(resets.nextExpiry)}` : count;
+}
+
+function resetsBlock(resets) {
+  const block = el("div", "resets");
+  if (confirmingReset) {
+    block.append(el("p", "confirm-text", "Use a reset now? It refills your Codex limits and restarts your weekly clock."));
+    const choices = el("div", "btns");
+    choices.append(
+      button("Cancel", "btn", () => {
+        confirmingReset = false;
+        render();
+      }),
+      button("Use it", "btn primary", useReset),
+    );
+    block.append(choices);
+    return block;
+  }
+  const row = el("div", "reset-row");
+  row.append(el("span", "muted", resetsLabel(resets)));
+  if (resets.available > 0) {
+    const use = button(spendingReset ? "Using…" : "Use reset", "btn", () => {
+      confirmingReset = true;
+      render();
+    });
+    use.disabled = spendingReset;
+    row.append(use);
+  }
+  block.append(row);
+  return block;
+}
+
+function eventLine(event) {
+  return el("p", event.ok ? "event ok" : "event error", `${event.message} (${clock(event.at)})`);
 }
 
 function card(provider, data) {
@@ -62,24 +122,93 @@ function card(provider, data) {
   section.append(head);
 
   for (const m of data.meters) section.append(meter(m));
-  if (data.meters.length === 0 && !data.error) section.append(el("p", "note muted", data.note ?? "Loading…"));
+  if (data.meters.length === 0 && !data.error && !data.note) section.append(el("p", "note muted", "Loading…"));
+  if (data.note) section.append(el("p", "note muted", data.note));
   if (data.error) section.append(el("p", "error", data.error));
+  if (provider.key === "codex") {
+    const resets = snapshot.codexResets;
+    if (resets.live) section.append(resetsBlock(resets));
+    if (resets.lastEvent) section.append(eventLine(resets.lastEvent));
+  }
   const foot = footnote(provider.key, data);
   if (foot) section.append(el("p", "foot muted", foot));
   return section;
 }
 
-function render() {
-  if (!snapshot) return;
-  const cards = PROVIDERS.filter((p) => snapshot[p.key].available).map((p) => card(p, snapshot[p.key]));
-  document.getElementById("providers").replaceChildren(...cards);
-  const asOf = snapshot.claude.asOf;
-  document.getElementById("updated").textContent = asOf ? `Updated ${clock(asOf)}` : "";
+function renderAutoReset() {
+  const resets = snapshot.codexResets;
+  auto.card.hidden = !snapshot.codex.available;
+  auto.status.textContent = resets.live ? resets.status ?? "" : "Paused until Codex's login works.";
+  auto.status.hidden = !auto.status.textContent;
+}
+
+function fit() {
   requestAnimationFrame(() => {
-    const height = Math.ceil(document.getElementById("app").getBoundingClientRect().height);
+    const height = Math.ceil($("app").getBoundingClientRect().height);
     invoke("fit_popover", { height });
   });
 }
+
+function render() {
+  if (!snapshot) return;
+  const cards = PROVIDERS.filter((p) => snapshot[p.key].available).map((p) => card(p, snapshot[p.key]));
+  $("providers").replaceChildren(...cards);
+  renderAutoReset();
+  const asOf = snapshot.claude.asOf;
+  $("updated").textContent = asOf ? `Updated ${clock(asOf)}` : "";
+  fit();
+}
+
+async function useReset() {
+  confirmingReset = false;
+  spendingReset = true;
+  render();
+  try {
+    snapshot.codexResets.lastEvent = await invoke("use_codex_reset");
+  } catch (error) {
+    snapshot.codexResets.lastEvent = { at: Date.now(), ok: false, message: String(error) };
+  }
+  spendingReset = false;
+  render();
+}
+
+function summaryText(settings) {
+  const parts = [];
+  if (settings.weeklyEnabled) parts.push(`at ${settings.weeklyPercent}% weekly`);
+  if (settings.fiveHourEnabled) parts.push(`5-hour block > ${settings.fiveHourMinutes} min`);
+  return parts.length ? `On · ${parts.join(", ")}` : "Off";
+}
+
+function showSettings(settings) {
+  const a = settings.codexAutoReset;
+  auto.weeklyEnabled.checked = a.weeklyEnabled;
+  auto.weeklyPercent.value = a.weeklyPercent;
+  auto.skipHours.value = a.skipWithinHours;
+  auto.fiveEnabled.checked = a.fiveHourEnabled;
+  auto.fiveMinutes.value = a.fiveHourMinutes;
+  auto.summary.textContent = summaryText(a);
+}
+
+async function saveSettings() {
+  const codexAutoReset = {
+    weeklyEnabled: auto.weeklyEnabled.checked,
+    weeklyPercent: Number(auto.weeklyPercent.value),
+    skipWithinHours: Number(auto.skipHours.value),
+    fiveHourEnabled: auto.fiveEnabled.checked,
+    fiveHourMinutes: Number(auto.fiveMinutes.value),
+  };
+  try {
+    showSettings(await invoke("save_settings", { settings: { codexAutoReset } }));
+  } catch (error) {
+    auto.status.textContent = String(error);
+    auto.status.hidden = false;
+  }
+}
+
+for (const input of [auto.weeklyEnabled, auto.weeklyPercent, auto.skipHours, auto.fiveEnabled, auto.fiveMinutes]) {
+  input.addEventListener("change", saveSettings);
+}
+auto.card.addEventListener("toggle", fit);
 
 function stopSpin() {
   clearTimeout(spinTimer);
@@ -104,6 +233,7 @@ listen("usage-updated", (event) => {
   render();
 });
 
+invoke("get_settings").then(showSettings);
 invoke("get_snapshot").then((initial) => {
   snapshot = initial;
   render();

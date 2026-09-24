@@ -78,12 +78,23 @@ fn tooltip(snapshot: &Snapshot, now: i64) -> String {
             if provider.meters.is_empty() {
                 return provider.error.as_ref().map(|_| format!("{name}: needs attention"));
             }
-            let parts: Vec<String> = provider.meters.iter().map(|m| meter_tip(m, now)).collect();
+            let mut parts: Vec<String> = provider.meters.iter().map(|m| meter_tip(m, now)).collect();
+            if name == "Codex" {
+                parts.extend(resets_tip(snapshot.codex_resets.available));
+            }
             Some(format!("{name}: {}", parts.join(" · ")))
         })
         .collect();
     let text = if lines.is_empty() { "AI Usage Monitor".to_string() } else { lines.join("\n") };
     text.chars().take(TOOLTIP_MAX).collect()
+}
+
+fn resets_tip(available: i64) -> Option<String> {
+    match available {
+        n if n <= 0 => None,
+        1 => Some("1 reset".to_string()),
+        n => Some(format!("{n} resets")),
+    }
 }
 
 fn meter_tip(meter: &Meter, now: i64) -> String {
@@ -167,7 +178,18 @@ mod tests {
                 ..Default::default()
             },
             codex: Provider { available: true, meters: vec![meter("30d", 0.0, None)], ..Default::default() },
+            ..Default::default()
         };
         assert_eq!(tooltip(&snapshot, now), "Claude: 5h 42% (2h 10m left) · Week 85% · Fable 91%\nCodex: 30d 0%");
+    }
+
+    #[test]
+    fn tooltip_counts_codex_resets() {
+        let snapshot = Snapshot {
+            codex: Provider { available: true, meters: vec![meter("Week", 96.0, None)], ..Default::default() },
+            codex_resets: crate::state::CodexResets { available: 2, ..Default::default() },
+            ..Default::default()
+        };
+        assert_eq!(tooltip(&snapshot, 0), "Codex: Week 96% · 2 resets");
     }
 }

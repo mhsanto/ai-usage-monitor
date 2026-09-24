@@ -18,6 +18,26 @@
       </button>
     </header>
     <div id="providers"></div>
+
+    <details id="auto-reset" class="card settings" hidden>
+      <summary>
+        <span class="card-name">Codex auto-reset</span>
+        <span id="auto-summary" class="plan">Off</span>
+      </summary>
+      <div class="setting">
+        <label class="check"><input type="checkbox" id="weekly-enabled"> Use a reset when weekly usage reaches</label>
+        <span class="num"><input type="number" id="weekly-percent" min="1" max="100" step="1" aria-label="Weekly usage percent">%</span>
+      </div>
+      <div class="setting sub">
+        <span>…but not if the weekly limit resets on its own within</span>
+        <span class="num"><input type="number" id="skip-hours" min="0" max="168" step="1" aria-label="Hours">h</span>
+      </div>
+      <div class="setting">
+        <label class="check"><input type="checkbox" id="five-enabled"> Also when the 5-hour window blocks me for more than</label>
+        <span class="num"><input type="number" id="five-minutes" min="0" max="300" step="5" aria-label="Minutes">min</span>
+      </div>
+      <p id="auto-status" class="note muted" hidden></p>
+    </details>
   </main>
 </body>
 </html>

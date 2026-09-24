@@ -11,9 +11,9 @@ Hover it for a summary, e.g. `Claude: 5h 43% (2h 34m left) · Week 85% · Fable 
 | Meter | Source |
 |---|---|
 | Claude (5-hour, weekly, per-model weekly) | `GET https://api.anthropic.com/api/oauth/usage`, authorised with the login Claude Code already stores in `~/.claude/.credentials.json`. The token is read on each check and never stored or refreshed by this app. |
-| Codex (ChatGPT account) | The newest `rate_limits` record Codex CLI writes to `~/.codex/sessions/**/*.jsonl`. Only as fresh as your last Codex session. |
+| Codex (ChatGPT account) | `GET https://chatgpt.com/backend-api/wham/usage`, authorised with the login Codex stores in `~/.codex/auth.json` (read per check, never stored or refreshed). Without a working login it falls back to the newest `rate_limits` record in `~/.codex/sessions/**/*.jsonl`, which is only as fresh as your last Codex session. |
 
-The Claude endpoint is undocumented (it is what Claude Code's `/usage` screen uses), so it can change without notice.
+Both endpoints are undocumented (they are what Claude Code's `/usage` screen and the official Codex app use), so they can change without notice.
 If it does, the popover says so instead of showing wrong numbers.
 
 ## When it checks
@@ -29,9 +29,34 @@ On `429` it backs off for 15 minutes and keeps showing the last good numbers.
 Idle, it does nothing: no window, no WebView2, no timers besides the 10-minute check.
 Launching the app a second time opens the popover.
 
+## Codex auto-reset
+
+Paid ChatGPT plans sometimes get *banked resets*: one-time credits that refill your Codex 5-hour and weekly limits.
+The Codex card shows how many you have, with a **Use reset** button (it asks first).
+The **Codex auto-reset** card can spend one for you. It is off until you tick a box.
+
+| Setting | Default |
+|---|---|
+| Use a reset when weekly usage reaches | 95% |
+| …but not if the weekly limit resets on its own within | 24 h |
+| Also when the 5-hour window blocks me for more than | 60 min (off) |
+
+Rules it always follows:
+
+- It only spends resets you already own. The request cannot buy one; with none left, OpenAI answers `no_credit`.
+- It uses the reset that expires soonest, the same choice the official Codex app makes.
+- It fires once per crossing. It re-arms only after usage drops back below the threshold.
+- A failed request is retried at most twice, with the same `redeem_request_id`, so OpenAI can never apply it twice.
+- A reset restarts your weekly clock, which is why it skips when a free weekly reset is close.
+
+It uses the same three requests as the official Codex app: `GET /wham/usage`, `GET /wham/rate-limit-reset-credits`, and `POST /wham/rate-limit-reset-credits/consume`.
+
 ## Build
 
-Needs Rust (MSVC toolchain), the Visual Studio C++ build tools, and Node.
+Every push builds on GitHub Actions (`.github/workflows/build.yml`): tests, lint, then the installer and portable exe as a downloadable artifact.
+To build locally instead:
+
+You need Rust (MSVC toolchain), the Visual Studio C++ build tools, and Node.
 
 ```
 npm install

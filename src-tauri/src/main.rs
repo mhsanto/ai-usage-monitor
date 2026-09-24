@@ -1,17 +1,26 @@
 // Prevents an extra console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod autoreset;
 mod claude;
 mod codex;
+mod codex_api;
 mod popover;
+mod settings;
 mod state;
 mod sync;
 mod tray;
 mod watch;
 
-use state::{AppState, Snapshot, Trigger};
+use codex_api::{Auth, CodexApi};
+use settings::{Settings, SettingsStore};
+use state::{AppState, ResetEvent, Snapshot, Trigger};
+use std::path::PathBuf;
+use std::time::Duration;
 use tauri::{AppHandle, Manager, RunEvent, State};
 use tauri_plugin_autostart::MacosLauncher;
+
+struct CodexHome(PathBuf);
 
 #[tauri::command]
 fn get_snapshot(state: State<AppState>) -> Snapshot {
@@ -21,6 +30,35 @@ fn get_snapshot(state: State<AppState>) -> Snapshot {
 #[tauri::command]
 fn refresh_now(app: AppHandle) {
     state::request(&app, Trigger::Refresh);
+}
+
+#[tauri::command]
+fn get_settings(store: State<SettingsStore>) -> Settings {
+    store.get()
+}
+
+#[tauri::command]
+fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
+    let saved = app.state::<SettingsStore>().save(settings)?;
+    state::request(&app, Trigger::CodexChanged);
+    Ok(saved)
+}
+
+#[tauri::command]
+async fn use_codex_reset(app: AppHandle) -> Result<ResetEvent, String> {
+    let api = app.state::<CodexApi>().inner().clone();
+    let codex_home = app.state::<CodexHome>().0.clone();
+    let state = app.state::<AppState>();
+    let event = {
+        let _spending = state.reset_lock.lock().await;
+        match Auth::load(&codex_home) {
+            Ok(auth) => autoreset::use_now(&api, &auth).await,
+            Err(error) => ResetEvent::failed(error.message),
+        }
+    };
+    state.snapshot.lock().unwrap().codex_resets.last_event = Some(event.clone());
+    state::request(&app, Trigger::CodexChanged);
+    Ok(event)
 }
 
 fn main() {
@@ -33,6 +71,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             refresh_now,
+            get_settings,
+            save_settings,
+            use_codex_reset,
             popover::fit_popover,
             popover::hide_popover
         ])
@@ -40,9 +81,17 @@ fn main() {
             let home = app.path().home_dir()?;
             let claude_dir = claude::config_dir(&home);
             let codex_home = codex::home_dir(&home);
-            app.manage(watch::start(&claude_dir, &codex::sessions_dir(&codex_home), tx));
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(20))
+                .user_agent(concat!("ai-usage-monitor/", env!("CARGO_PKG_VERSION")))
+                .build()?;
+
+            app.manage(SettingsStore::load(app.path().app_config_dir()?.join("settings.json")));
+            app.manage(CodexApi::new(client.clone(), codex_api::BASE_URL));
+            app.manage(CodexHome(codex_home.clone()));
+            app.manage(watch::start(&claude_dir, &codex_home, tx));
             tray::build(app.handle())?;
-            tauri::async_runtime::spawn(sync::run(app.handle().clone(), rx, claude_dir, codex_home));
+            tauri::async_runtime::spawn(sync::run(app.handle().clone(), rx, claude_dir, codex_home, client));
             Ok(())
         })
         .build(tauri::generate_context!())
