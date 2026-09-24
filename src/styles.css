@@ -169,8 +169,8 @@ html, body {
   cursor: pointer;
 }
 .settings summary::-webkit-details-marker { display: none; }
-.settings summary .card-name::before { content: "▸ "; color: var(--muted); }
-.settings[open] summary .card-name::before { content: "▾ "; }
+.chev { display: inline-block; color: var(--muted); transition: transform 0.15s ease; }
+.settings[open] .chev { transform: rotate(90deg); }
 .settings[open] summary { margin-bottom: 8px; }
 .setting {
   display: flex;
@@ -200,4 +200,5 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .fill { transition: none; }
   .icon-btn.spinning svg { animation: none; }
+  .chev { transition: none; }
 }

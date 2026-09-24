@@ -42,7 +42,9 @@ jobs:
           Copy-Item (Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe).FullName "dist/AI-Usage-Monitor_${version}_x64-setup.exe"
           Copy-Item src-tauri/target/release/ai-usage-tray.exe "dist/AI-Usage-Monitor_${version}_x64-portable.exe"
           Push-Location dist
-          Get-ChildItem *.exe | ForEach-Object { "{0} *{1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name } | Set-Content SHA256SUMS.txt -Encoding ascii
+          $sums = Get-ChildItem *.exe | ForEach-Object { "{0} *{1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name }
+          # LF endings, so `sha256sum -c` works as well as certutil.
+          [IO.File]::WriteAllText("$PWD/SHA256SUMS.txt", ($sums -join "`n") + "`n")
           Pop-Location
           Copy-Item src-tauri/Cargo.lock dist/Cargo.lock
 
