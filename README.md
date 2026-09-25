@@ -3,6 +3,14 @@
 A Windows 11 tray app that shows how close you are to your AI plan limits.
 Left-click the tray ring for the popover; right-click for Refresh, Start with Windows, and Quit.
 
+In the usage window, enable **Keep open** to stop it closing when you click elsewhere.
+Use **Always on top** to keep it above other apps. Both choices are saved across restarts;
+by default, Keep open is off and Always on top is on.
+Close the window with its close button, Escape, or another click on the tray ring.
+With **Keep open** selected, drag the header to move the window; usage refreshes preserve its position.
+The **Compact mode** button in the header switches to a smaller view with all usage bars and percentages.
+Click it again to restore the full view and settings. Compact mode is saved across restarts.
+
 The tray ring fills with your highest Claude limit and turns amber at 75%, red at 90%.
 Hover it for a summary, e.g. `Claude: 5h 43% (2h 34m left) · Week 85% · Fable 91%`; the time left is recomputed on hover.
 

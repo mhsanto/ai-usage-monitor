@@ -45,7 +45,8 @@ html, body {
   overflow: hidden;
 }
 
-#app { padding: 12px; }
+#app { padding: 12px; width: 320px; }
+.movable .top { cursor: move; }
 
 .top {
   display: flex;
@@ -63,7 +64,19 @@ html, body {
 
 .muted { color: var(--muted); }
 
+#window-options {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  margin: 0 0 10px;
+  font-size: 11px;
+}
+#settings-error { margin: 0 0 10px; }
+
 .icon-btn {
+  flex-shrink: 0;
   display: grid;
   place-items: center;
   width: 26px;
@@ -75,6 +88,8 @@ html, body {
   cursor: pointer;
 }
 .icon-btn:hover { background: var(--hover); color: var(--text); }
+.icon-btn[aria-pressed="true"] { background: var(--hover); color: var(--normal); }
+.icon-btn:disabled { opacity: 0.5; cursor: default; }
 .icon-btn:focus-visible { outline: 2px solid var(--normal); outline-offset: 1px; }
 .icon-btn.spinning svg { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -196,6 +211,23 @@ html, body {
   color: var(--text);
 }
 .num input:focus-visible { outline: 2px solid var(--normal); outline-offset: 0; }
+
+.compact #app { width: 240px; padding: 6px; }
+.compact .top { gap: 4px; margin-bottom: 4px; }
+.compact .title { font-size: 11px; }
+.compact .icon-btn { width: 22px; height: 22px; }
+.compact #updated, .compact #window-options, .compact #auto-reset,
+.compact .plan, .compact .reset, .compact .resets, .compact .event { display: none; }
+.compact .card { padding: 6px; border-radius: 5px; }
+.compact .card + .card { margin-top: 4px; }
+.compact .card-head { margin-bottom: 4px; font-size: 11px; }
+.compact .meter { display: grid; grid-template-columns: 68px 1fr 30px; align-items: center; gap: 6px; }
+.compact .meter + .meter { margin-top: 4px; }
+.compact .meter-top { display: contents; }
+.compact .meter .label { grid-column: 1; grid-row: 1; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact .meter .bar { grid-column: 2; grid-row: 1; }
+.compact .meter .pct { grid-column: 3; grid-row: 1; text-align: right; font-size: 10px; }
+.compact .foot, .compact .note, .compact .error { font-size: 10px; margin-top: 4px; overflow-wrap: anywhere; }
 
 @media (prefers-reduced-motion: reduce) {
   .fill { transition: none; }

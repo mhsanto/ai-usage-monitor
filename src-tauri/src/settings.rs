@@ -29,10 +29,19 @@ impl AutoReset {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     pub codex_auto_reset: AutoReset,
+    pub keep_open: bool,
+    pub always_on_top: bool,
+    pub compact_mode: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self { codex_auto_reset: AutoReset::default(), keep_open: false, always_on_top: true, compact_mode: false }
+    }
 }
 
 pub struct SettingsStore {
@@ -54,7 +63,7 @@ impl SettingsStore {
     }
 
     pub fn save(&self, settings: Settings) -> Result<Settings, String> {
-        let settings = Settings { codex_auto_reset: settings.codex_auto_reset.clamped() };
+        let settings = Settings { codex_auto_reset: settings.codex_auto_reset.clamped(), ..settings };
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("Couldn't save settings: {e}"))?;
         }
@@ -76,7 +85,10 @@ mod tests {
         assert_eq!(store.get(), Settings::default());
 
         let wild = AutoReset { weekly_enabled: true, weekly_percent: 250.0, skip_within_hours: -3.0, five_hour_minutes: 59.6, ..AutoReset::default() };
-        let saved = store.save(Settings { codex_auto_reset: wild }).unwrap();
+        let saved = store.save(Settings { codex_auto_reset: wild, keep_open: true, always_on_top: false, compact_mode: true }).unwrap();
+        assert!(saved.keep_open);
+        assert!(saved.compact_mode);
+        assert!(!saved.always_on_top);
         assert_eq!(
             saved.codex_auto_reset,
             AutoReset { weekly_enabled: true, weekly_percent: 100.0, skip_within_hours: 0.0, five_hour_enabled: false, five_hour_minutes: 60.0 }
@@ -90,5 +102,8 @@ mod tests {
         let settings: Settings = serde_json::from_str(r#"{"codexAutoReset": {"weeklyEnabled": true}}"#).unwrap();
         assert!(settings.codex_auto_reset.weekly_enabled);
         assert_eq!(settings.codex_auto_reset.weekly_percent, 95.0);
+        assert!(!settings.keep_open);
+        assert!(settings.always_on_top);
+        assert!(!settings.compact_mode);
     }
 }

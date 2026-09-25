@@ -8,15 +8,31 @@
 </head>
 <body>
   <main id="app">
-    <header class="top">
+    <header id="window-header" class="top">
       <span class="title">AI Usage</span>
       <span id="updated" class="muted"></span>
+      <button id="compact-mode" class="icon-btn" type="button" title="Compact mode" aria-label="Compact mode" aria-pressed="false" disabled>
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M5 6h6M5 9h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </button>
       <button id="refresh" class="icon-btn" type="button" title="Refresh now" aria-label="Refresh now">
         <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
           <path d="M13.5 8a5.5 5.5 0 1 1-1.61-3.89M13.5 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
+      <button id="close" class="icon-btn" type="button" title="Close window" aria-label="Close window">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path d="m4 4 8 8m0-8-8 8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </button>
     </header>
+    <fieldset id="window-options" disabled aria-label="Window options">
+      <label class="check" title="Keep the window open when you click elsewhere"><input type="checkbox" id="keep-open"> Keep open</label>
+      <label class="check" title="Show the window above other apps"><input type="checkbox" id="always-on-top"> Always on top</label>
+    </fieldset>
+    <p id="settings-error" class="error" role="alert" hidden></p>
     <div id="providers"></div>
 
     <details id="auto-reset" class="card settings" hidden>
