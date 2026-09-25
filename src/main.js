@@ -18,6 +18,14 @@ const auto = {
   fiveMinutes: $("five-minutes"),
   status: $("auto-status"),
 };
+const settingsInputs = [$("keep-open"), $("always-on-top"), auto.weeklyEnabled, auto.weeklyPercent, auto.skipHours, auto.fiveEnabled, auto.fiveMinutes];
+
+function setSettingsDisabled(disabled) {
+  $("compact-mode").disabled = disabled;
+  $("window-options").disabled = disabled;
+  for (const input of settingsInputs) input.disabled = disabled;
+}
+setSettingsDisabled(true);
 
 let snapshot = null;
 let spinTimer = null;
@@ -58,6 +66,7 @@ function resetText(ms) {
 
 function meter(m) {
   const row = el("div", "meter");
+  row.title = `${m.label}: ${Math.round(m.percent)}%${m.resetsAt ? ` · ${resetText(m.resetsAt)}` : ""}`;
   const top = el("div", "meter-top");
   top.append(el("span", "label", m.label), el("span", `pct ${m.severity}`, `${Math.round(m.percent)}%`));
   const bar = el("div", "bar");
@@ -180,6 +189,13 @@ function summaryText(settings) {
 }
 
 function showSettings(settings) {
+  document.body.classList.toggle("compact", settings.compactMode);
+  document.body.classList.toggle("movable", settings.keepOpen);
+  $("window-header").title = settings.keepOpen ? "Drag to move" : "";
+  $("compact-mode").setAttribute("aria-pressed", String(settings.compactMode));
+  $("compact-mode").title = settings.compactMode ? "Show full view" : "Compact mode";
+  $("keep-open").checked = settings.keepOpen;
+  $("always-on-top").checked = settings.alwaysOnTop;
   const a = settings.codexAutoReset;
   auto.weeklyEnabled.checked = a.weeklyEnabled;
   auto.weeklyPercent.value = a.weeklyPercent;
@@ -187,6 +203,7 @@ function showSettings(settings) {
   auto.fiveEnabled.checked = a.fiveHourEnabled;
   auto.fiveMinutes.value = a.fiveHourMinutes;
   auto.summary.textContent = summaryText(a);
+  fit();
 }
 
 async function saveSettings() {
@@ -197,18 +214,45 @@ async function saveSettings() {
     fiveHourEnabled: auto.fiveEnabled.checked,
     fiveHourMinutes: Number(auto.fiveMinutes.value),
   };
+  const settings = {
+    codexAutoReset,
+    keepOpen: $("keep-open").checked,
+    alwaysOnTop: $("always-on-top").checked,
+    compactMode: $("compact-mode").getAttribute("aria-pressed") === "true",
+  };
+  setSettingsDisabled(true);
+  $("settings-error").hidden = true;
   try {
-    showSettings(await invoke("save_settings", { settings: { codexAutoReset } }));
+    showSettings(await invoke("save_settings", { settings }));
   } catch (error) {
-    auto.status.textContent = String(error);
-    auto.status.hidden = false;
+    $("settings-error").textContent = String(error);
+    $("settings-error").hidden = false;
+    await invoke("get_settings").then(showSettings).catch(() => {});
+  } finally {
+    setSettingsDisabled(false);
+    fit();
   }
 }
 
-for (const input of [auto.weeklyEnabled, auto.weeklyPercent, auto.skipHours, auto.fiveEnabled, auto.fiveMinutes]) {
+for (const input of settingsInputs) {
   input.addEventListener("change", saveSettings);
 }
 auto.card.addEventListener("toggle", fit);
+$("compact-mode").addEventListener("click", () => {
+  const compact = $("compact-mode").getAttribute("aria-pressed") !== "true";
+  $("compact-mode").setAttribute("aria-pressed", String(compact));
+  confirmingReset = false;
+  saveSettings();
+});
+$("window-header").addEventListener("mousedown", (event) => {
+  if (event.button !== 0 || event.target.closest("button") || !$("keep-open").checked) return;
+  event.preventDefault();
+  invoke("drag_popover").catch((error) => {
+    $("settings-error").textContent = `Couldn't move window: ${error}`;
+    $("settings-error").hidden = false;
+    fit();
+  });
+});
 
 function stopSpin() {
   clearTimeout(spinTimer);
@@ -226,6 +270,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") invoke("hide_popover");
 });
 document.addEventListener("contextmenu", (event) => event.preventDefault());
+$("close").addEventListener("click", () => invoke("hide_popover"));
 
 listen("usage-updated", (event) => {
   snapshot = event.payload;
@@ -233,7 +278,14 @@ listen("usage-updated", (event) => {
   render();
 });
 
-invoke("get_settings").then(showSettings);
+invoke("get_settings").then((settings) => {
+  showSettings(settings);
+  setSettingsDisabled(false);
+}).catch((error) => {
+  $("settings-error").textContent = `Couldn't load settings: ${error}`;
+  $("settings-error").hidden = false;
+  fit();
+});
 invoke("get_snapshot").then((initial) => {
   snapshot = initial;
   render();

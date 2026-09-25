@@ -1,3 +1,4 @@
+use crate::settings::SettingsStore;
 use crate::state::{request, AppState, Trigger};
 use std::time::{Duration, Instant};
 use tauri::{
@@ -7,6 +8,7 @@ use tauri::{
 
 const LABEL: &str = "main";
 const WIDTH: f64 = 320.0;
+const COMPACT_WIDTH: f64 = 240.0;
 const MARGIN: f64 = 12.0;
 // The click that blurs the popover also lands on the tray icon; don't reopen on it.
 const REOPEN_GUARD: Duration = Duration::from_millis(300);
@@ -61,16 +63,23 @@ fn open(app: &AppHandle) -> tauri::Result<()> {
         .minimizable(false)
         .decorations(false)
         .skip_taskbar(true)
-        .always_on_top(true)
+        .always_on_top(app.state::<SettingsStore>().get().always_on_top)
         .visible(false)
         .build()?;
 
     let handle = app.clone();
     window.on_window_event(move |event| {
-        if matches!(event, WindowEvent::Focused(false)) && settled(&handle) {
+        if matches!(event, WindowEvent::Focused(false)) && settled(&handle) && !handle.state::<SettingsStore>().get().keep_open {
             close(&handle);
         }
     });
+    Ok(())
+}
+
+pub fn set_always_on_top(app: &AppHandle, enabled: bool) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window(LABEL) {
+        window.set_always_on_top(enabled)?;
+    }
     Ok(())
 }
 
@@ -96,7 +105,29 @@ pub fn hide_popover(app: AppHandle) {
     close(&app);
 }
 
+#[tauri::command]
+pub fn drag_popover(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
+    if app.state::<SettingsStore>().get().keep_open {
+        window.start_dragging().map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
 fn place(app: &AppHandle, window: &WebviewWindow, height: f64, anchor: Option<Rect>) {
+    let settings = app.state::<SettingsStore>().get();
+    let width = if settings.compact_mode { COMPACT_WIDTH } else { WIDTH };
+    // A kept-open window belongs where the user placed it, including after refreshes.
+    if settings.keep_open && window.is_visible().unwrap_or(false) {
+        if let (Ok(Some(monitor)), Ok(position)) = (window.current_monitor(), window.outer_position()) {
+            let scale = monitor.scale_factor();
+            let size = PhysicalSize::new((width * scale).round() as u32, (height * scale).round() as u32);
+            let area = monitor.work_area();
+            let position = clamp_position(position, size, area.position, area.size);
+            let _ = window.set_size(size);
+            let _ = window.set_position(position);
+            return;
+        }
+    }
     let anchor = anchor.map(|rect| (rect.position.to_physical::<f64>(1.0), rect.size.to_physical::<f64>(1.0)));
     let monitor = anchor
         .and_then(|(pos, _)| app.monitor_from_point(pos.x, pos.y).ok().flatten())
@@ -104,12 +135,19 @@ fn place(app: &AppHandle, window: &WebviewWindow, height: f64, anchor: Option<Re
     let Some(monitor) = monitor else { return };
 
     let scale = monitor.scale_factor();
-    let size = PhysicalSize::new((WIDTH * scale).round() as u32, (height * scale).round() as u32);
+    let size = PhysicalSize::new((width * scale).round() as u32, (height * scale).round() as u32);
     let position = position_for(&monitor, size, anchor, (MARGIN * scale).round() as i32);
     let _ = window.set_position(position);
     let _ = window.set_size(size);
     // Moving across monitors with different DPI rescales the window; pin it again.
     let _ = window.set_position(position);
+}
+
+fn clamp_position(position: PhysicalPosition<i32>, size: PhysicalSize<u32>, origin: PhysicalPosition<i32>, area: PhysicalSize<u32>) -> PhysicalPosition<i32> {
+    PhysicalPosition::new(
+        position.x.clamp(origin.x, (origin.x + area.width as i32 - size.width as i32).max(origin.x)),
+        position.y.clamp(origin.y, (origin.y + area.height as i32 - size.height as i32).max(origin.y)),
+    )
 }
 
 fn position_for(
@@ -130,4 +168,19 @@ fn position_for(
     let x = (icon_center - w / 2).clamp(left + margin, (right - w - margin).max(left + margin));
     let y = if (pos.y as i32) < top { top + margin } else { bottom - h - margin };
     PhysicalPosition::new(x, y)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resizing_keeps_the_dragged_position_unless_it_would_go_off_screen() {
+        let origin = PhysicalPosition::new(-1920, 0);
+        let area = PhysicalSize::new(1920, 1040);
+        let position = PhysicalPosition::new(-400, 700);
+        assert_eq!(clamp_position(position, PhysicalSize::new(240, 200), origin, area), position);
+        assert_eq!(clamp_position(position, PhysicalSize::new(320, 500), origin, area), PhysicalPosition::new(-400, 540));
+        assert_eq!(clamp_position(PhysicalPosition::new(-200, 100), PhysicalSize::new(320, 500), origin, area), PhysicalPosition::new(-320, 100));
+    }
 }

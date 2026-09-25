@@ -39,8 +39,12 @@ fn get_settings(store: State<SettingsStore>) -> Settings {
 
 #[tauri::command]
 fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
+    let previous = app.state::<SettingsStore>().get();
     let saved = app.state::<SettingsStore>().save(settings)?;
-    state::request(&app, Trigger::CodexChanged);
+    popover::set_always_on_top(&app, saved.always_on_top).map_err(|error| format!("Settings saved, but couldn't update Always on top: {error}"))?;
+    if saved.codex_auto_reset != previous.codex_auto_reset {
+        state::request(&app, Trigger::CodexChanged);
+    }
     Ok(saved)
 }
 
@@ -75,6 +79,7 @@ fn main() {
             save_settings,
             use_codex_reset,
             popover::fit_popover,
+            popover::drag_popover,
             popover::hide_popover
         ])
         .setup(move |app| {
