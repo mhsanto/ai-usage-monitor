@@ -2,8 +2,8 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 const PROVIDERS = [
-  { key: "claude", name: "Claude" },
-  { key: "codex", name: "Codex" },
+  { key: "claude", name: "Claude", setting: "showClaude" },
+  { key: "codex", name: "Codex", setting: "showCodex" },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -28,6 +28,7 @@ function setSettingsDisabled(disabled) {
 setSettingsDisabled(true);
 
 let snapshot = null;
+let settings = null;
 let spinTimer = null;
 let confirmingReset = false;
 let spendingReset = false;
@@ -144,9 +145,14 @@ function card(provider, data) {
   return section;
 }
 
+// Settings may not have loaded yet; until then every provider counts as shown.
+function isShown(provider) {
+  return snapshot[provider.key].available && settings?.[provider.setting] !== false;
+}
+
 function renderAutoReset() {
   const resets = snapshot.codexResets;
-  auto.card.hidden = !snapshot.codex.available;
+  auto.card.hidden = !isShown(PROVIDERS[1]);
   auto.status.textContent = resets.live ? resets.status ?? "" : "Paused until Codex's login works.";
   auto.status.hidden = !auto.status.textContent;
 }
@@ -160,10 +166,10 @@ function fit() {
 
 function render() {
   if (!snapshot) return;
-  const cards = PROVIDERS.filter((p) => snapshot[p.key].available).map((p) => card(p, snapshot[p.key]));
-  $("providers").replaceChildren(...cards);
+  const shown = PROVIDERS.filter(isShown);
+  $("providers").replaceChildren(...shown.map((p) => card(p, snapshot[p.key])));
   renderAutoReset();
-  const asOf = snapshot.claude.asOf;
+  const asOf = Math.max(0, ...shown.map((p) => snapshot[p.key].asOf ?? 0));
   $("updated").textContent = asOf ? `Updated ${clock(asOf)}` : "";
   fit();
 }
@@ -188,7 +194,8 @@ function summaryText(settings) {
   return parts.length ? `On · ${parts.join(", ")}` : "Off";
 }
 
-function showSettings(settings) {
+function showSettings(saved) {
+  settings = saved;
   document.body.classList.toggle("compact", settings.compactMode);
   document.body.classList.toggle("movable", settings.keepOpen);
   $("window-header").title = settings.keepOpen ? "Drag to move" : "";
@@ -203,6 +210,7 @@ function showSettings(settings) {
   auto.fiveEnabled.checked = a.fiveHourEnabled;
   auto.fiveMinutes.value = a.fiveHourMinutes;
   auto.summary.textContent = summaryText(a);
+  render();
   fit();
 }
 
@@ -214,7 +222,7 @@ async function saveSettings() {
     fiveHourEnabled: auto.fiveEnabled.checked,
     fiveHourMinutes: Number(auto.fiveMinutes.value),
   };
-  const settings = {
+  const changed = {
     codexAutoReset,
     keepOpen: $("keep-open").checked,
     alwaysOnTop: $("always-on-top").checked,
@@ -223,7 +231,7 @@ async function saveSettings() {
   setSettingsDisabled(true);
   $("settings-error").hidden = true;
   try {
-    showSettings(await invoke("save_settings", { settings }));
+    showSettings(await invoke("save_settings", { settings: changed }));
   } catch (error) {
     $("settings-error").textContent = String(error);
     $("settings-error").hidden = false;
@@ -272,14 +280,15 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("contextmenu", (event) => event.preventDefault());
 $("close").addEventListener("click", () => invoke("hide_popover"));
 
+listen("settings-updated", (event) => showSettings(event.payload));
 listen("usage-updated", (event) => {
   snapshot = event.payload;
   stopSpin();
   render();
 });
 
-invoke("get_settings").then((settings) => {
-  showSettings(settings);
+invoke("get_settings").then((loaded) => {
+  showSettings(loaded);
   setSettingsDisabled(false);
 }).catch((error) => {
   $("settings-error").textContent = `Couldn't load settings: ${error}`;

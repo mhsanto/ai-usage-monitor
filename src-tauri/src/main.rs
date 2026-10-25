@@ -40,6 +40,8 @@ fn get_settings(store: State<SettingsStore>) -> Settings {
 #[tauri::command]
 fn save_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
     let previous = app.state::<SettingsStore>().get();
+    // Visibility belongs to the tray menu; the window never sends it.
+    let settings = Settings { show_claude: previous.show_claude, show_codex: previous.show_codex, ..settings };
     let saved = app.state::<SettingsStore>().save(settings)?;
     popover::set_always_on_top(&app, saved.always_on_top).map_err(|error| format!("Settings saved, but couldn't update Always on top: {error}"))?;
     if saved.codex_auto_reset != previous.codex_auto_reset {

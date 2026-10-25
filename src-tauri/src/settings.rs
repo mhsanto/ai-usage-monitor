@@ -36,11 +36,20 @@ pub struct Settings {
     pub keep_open: bool,
     pub always_on_top: bool,
     pub compact_mode: bool,
+    pub show_claude: bool,
+    pub show_codex: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { codex_auto_reset: AutoReset::default(), keep_open: false, always_on_top: true, compact_mode: false }
+        Self {
+            codex_auto_reset: AutoReset::default(),
+            keep_open: false,
+            always_on_top: true,
+            compact_mode: false,
+            show_claude: true,
+            show_codex: true,
+        }
     }
 }
 
@@ -85,7 +94,9 @@ mod tests {
         assert_eq!(store.get(), Settings::default());
 
         let wild = AutoReset { weekly_enabled: true, weekly_percent: 250.0, skip_within_hours: -3.0, five_hour_minutes: 59.6, ..AutoReset::default() };
-        let saved = store.save(Settings { codex_auto_reset: wild, keep_open: true, always_on_top: false, compact_mode: true }).unwrap();
+        let saved = store
+            .save(Settings { codex_auto_reset: wild, keep_open: true, always_on_top: false, compact_mode: true, ..Settings::default() })
+            .unwrap();
         assert!(saved.keep_open);
         assert!(saved.compact_mode);
         assert!(!saved.always_on_top);
@@ -105,5 +116,6 @@ mod tests {
         assert!(!settings.keep_open);
         assert!(settings.always_on_top);
         assert!(!settings.compact_mode);
+        assert!(settings.show_claude && settings.show_codex);
     }
 }

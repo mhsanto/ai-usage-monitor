@@ -1,11 +1,12 @@
 use crate::popover;
-use crate::state::{now_ms, request, AppState, Meter, Severity, Snapshot, Trigger};
+use crate::settings::{Settings, SettingsStore};
+use crate::state::{now_ms, request, AppState, Meter, Provider, Severity, Snapshot, Trigger};
 use std::f64::consts::TAU;
 use std::sync::Mutex;
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_plugin_autostart::ManagerExt;
 
 const TRAY_ID: &str = "usage";
@@ -13,11 +14,26 @@ const ICON_SIZE: usize = 32;
 const TOOLTIP_MAX: usize = 127;
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
+    let settings = app.state::<SettingsStore>().get();
     let refresh = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
+    let show_claude = CheckMenuItem::with_id(app, "show-claude", "Show Claude", true, settings.show_claude, None::<&str>)?;
+    let show_codex = CheckMenuItem::with_id(app, "show-codex", "Show Codex", true, settings.show_codex, None::<&str>)?;
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(app, "autostart", "Start with Windows", true, autostart_on, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit AI Usage Monitor", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&refresh, &autostart, &PredefinedMenuItem::separator(app)?, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &refresh,
+            &PredefinedMenuItem::separator(app)?,
+            &show_claude,
+            &show_codex,
+            &PredefinedMenuItem::separator(app)?,
+            &autostart,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
+    )?;
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(gauge_icon(None, Severity::Normal))
@@ -26,6 +42,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "refresh" => request(app, Trigger::Refresh),
+            id @ ("show-claude" | "show-codex") => toggle_shown(app, id, &show_claude, &show_codex),
             "autostart" => toggle_autostart(app, &autostart),
             "quit" => app.exit(0),
             _ => {}
@@ -36,7 +53,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             }
             // Recomputed on hover so "time left" is current, with no timer running while idle.
             TrayIconEvent::Enter { .. } | TrayIconEvent::Move { .. } => {
-                let text = tooltip(&tray.app_handle().state::<AppState>().snapshot.lock().unwrap(), now_ms());
+                let app = tray.app_handle();
+                let settings = app.state::<SettingsStore>().get();
+                let text = tooltip(&app.state::<AppState>().snapshot.lock().unwrap(), &settings, now_ms());
                 set_tooltip(tray, text);
             }
             _ => {}
@@ -47,9 +66,45 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 
 pub fn update(app: &AppHandle, snapshot: &Snapshot) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else { return };
-    let worst = snapshot.claude.meters.iter().max_by(|a, b| a.percent.total_cmp(&b.percent));
+    let settings = app.state::<SettingsStore>().get();
+    let worst = worst_meter(snapshot, &settings);
     let _ = tray.set_icon(Some(gauge_icon(worst.map(|m| m.percent), worst.map_or(Severity::Normal, |m| m.severity))));
-    set_tooltip(&tray, tooltip(snapshot, now_ms()));
+    set_tooltip(&tray, tooltip(snapshot, &settings, now_ms()));
+}
+
+fn shown<'a>(snapshot: &'a Snapshot, settings: &Settings) -> Vec<(&'static str, &'a Provider)> {
+    [("Claude", &snapshot.claude, settings.show_claude), ("Codex", &snapshot.codex, settings.show_codex)]
+        .into_iter()
+        .filter_map(|(name, provider, show)| show.then_some((name, provider)))
+        .collect()
+}
+
+fn worst_meter<'a>(snapshot: &'a Snapshot, settings: &Settings) -> Option<&'a Meter> {
+    shown(snapshot, settings)
+        .into_iter()
+        .flat_map(|(_, provider)| &provider.meters)
+        .max_by(|a, b| a.percent.total_cmp(&b.percent))
+}
+
+fn toggle_shown(app: &AppHandle, id: &str, claude_item: &CheckMenuItem<Wry>, codex_item: &CheckMenuItem<Wry>) {
+    let store = app.state::<SettingsStore>();
+    let mut settings = store.get();
+    if id == "show-claude" {
+        settings.show_claude = !settings.show_claude;
+    } else {
+        settings.show_codex = !settings.show_codex;
+    }
+    // Hiding both would leave an empty window and a blank ring.
+    if settings.show_claude || settings.show_codex {
+        if let Ok(saved) = store.save(settings) {
+            let _ = app.emit("settings-updated", &saved);
+            let snapshot = app.state::<AppState>().snapshot.lock().unwrap().clone();
+            update(app, &snapshot);
+        }
+    }
+    let current = store.get();
+    let _ = claude_item.set_checked(current.show_claude);
+    let _ = codex_item.set_checked(current.show_codex);
 }
 
 /// Skips the shell call when the text is unchanged, since hover fires on every mouse move.
@@ -71,8 +126,8 @@ fn toggle_autostart(app: &AppHandle, item: &CheckMenuItem<Wry>) {
     let _ = item.set_checked(launcher.is_enabled().unwrap_or(false));
 }
 
-fn tooltip(snapshot: &Snapshot, now: i64) -> String {
-    let lines: Vec<String> = [("Claude", &snapshot.claude), ("Codex", &snapshot.codex)]
+fn tooltip(snapshot: &Snapshot, settings: &Settings, now: i64) -> String {
+    let lines: Vec<String> = shown(snapshot, settings)
         .into_iter()
         .filter_map(|(name, provider)| {
             if provider.meters.is_empty() {
@@ -115,7 +170,7 @@ fn time_left(ms: i64) -> String {
     }
 }
 
-/// A ring that fills clockwise from 12 o'clock with the highest Claude usage.
+/// A ring that fills clockwise from 12 o'clock with the highest usage of the shown providers.
 fn gauge_icon(percent: Option<f64>, severity: Severity) -> Image<'static> {
     let (outer, inner) = (15.5, 9.0);
     let center = ICON_SIZE as f64 / 2.0;
@@ -180,7 +235,7 @@ mod tests {
             codex: Provider { available: true, meters: vec![meter("30d", 0.0, None)], ..Default::default() },
             ..Default::default()
         };
-        assert_eq!(tooltip(&snapshot, now), "Claude: 5h 42% (2h 10m left) · Week 85% · Fable 91%\nCodex: 30d 0%");
+        assert_eq!(tooltip(&snapshot, &Settings::default(), now), "Claude: 5h 42% (2h 10m left) · Week 85% · Fable 91%\nCodex: 30d 0%");
     }
 
     #[test]
@@ -190,6 +245,31 @@ mod tests {
             codex_resets: crate::state::CodexResets { available: 2, ..Default::default() },
             ..Default::default()
         };
-        assert_eq!(tooltip(&snapshot, 0), "Codex: Week 96% · 2 resets");
+        assert_eq!(tooltip(&snapshot, &Settings::default(), 0), "Codex: Week 96% · 2 resets");
+    }
+
+    fn both(claude: Vec<Meter>, codex: Vec<Meter>) -> Snapshot {
+        Snapshot {
+            claude: Provider { available: true, meters: claude, ..Default::default() },
+            codex: Provider { available: true, meters: codex, ..Default::default() },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn ring_follows_codex_when_claude_has_no_usage() {
+        let settings = Settings::default();
+        let logged_out = both(vec![], vec![meter("Week", 40.0, None)]);
+        assert_eq!(worst_meter(&logged_out, &settings).map(|m| m.percent), Some(40.0));
+        let idle = both(vec![meter("5h", 0.0, None)], vec![meter("Week", 40.0, None)]);
+        assert_eq!(worst_meter(&idle, &settings).map(|m| m.percent), Some(40.0));
+    }
+
+    #[test]
+    fn hidden_providers_leave_the_ring_and_tooltip() {
+        let snapshot = both(vec![meter("5h", 90.0, None)], vec![meter("Week", 40.0, None)]);
+        let settings = Settings { show_claude: false, ..Settings::default() };
+        assert_eq!(worst_meter(&snapshot, &settings).map(|m| m.percent), Some(40.0));
+        assert_eq!(tooltip(&snapshot, &settings, 0), "Codex: Week 40%");
     }
 }
