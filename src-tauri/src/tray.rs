@@ -13,6 +13,11 @@ const TRAY_ID: &str = "usage";
 const ICON_SIZE: usize = 32;
 const TOOLTIP_MAX: usize = 127;
 
+struct ShowItems {
+    claude: CheckMenuItem<Wry>,
+    codex: CheckMenuItem<Wry>,
+}
+
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let settings = app.state::<SettingsStore>().get();
     let refresh = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
@@ -21,6 +26,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(app, "autostart", "Start with Windows", true, autostart_on, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit AI Usage Monitor", true, None::<&str>)?;
+    app.manage(ShowItems { claude: show_claude.clone(), codex: show_codex.clone() });
     let menu = Menu::with_items(
         app,
         &[
@@ -42,7 +48,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id().as_ref() {
             "refresh" => request(app, Trigger::Refresh),
-            id @ ("show-claude" | "show-codex") => toggle_shown(app, id, &show_claude, &show_codex),
+            id @ ("show-claude" | "show-codex") => toggle_shown(app, id),
             "autostart" => toggle_autostart(app, &autostart),
             "quit" => app.exit(0),
             _ => {}
@@ -86,7 +92,7 @@ fn worst_meter<'a>(snapshot: &'a Snapshot, settings: &Settings) -> Option<&'a Me
         .max_by(|a, b| a.percent.total_cmp(&b.percent))
 }
 
-fn toggle_shown(app: &AppHandle, id: &str, claude_item: &CheckMenuItem<Wry>, codex_item: &CheckMenuItem<Wry>) {
+fn toggle_shown(app: &AppHandle, id: &str) {
     let store = app.state::<SettingsStore>();
     let mut settings = store.get();
     if id == "show-claude" {
@@ -94,17 +100,20 @@ fn toggle_shown(app: &AppHandle, id: &str, claude_item: &CheckMenuItem<Wry>, cod
     } else {
         settings.show_codex = !settings.show_codex;
     }
-    // Hiding both would leave an empty window and a blank ring.
-    if settings.show_claude || settings.show_codex {
-        if let Ok(saved) = store.save(settings) {
-            let _ = app.emit("settings-updated", &saved);
-            let snapshot = app.state::<AppState>().snapshot.lock().unwrap().clone();
-            update(app, &snapshot);
-        }
+    if let Ok(saved) = store.save(settings) {
+        let _ = app.emit("settings-updated", &saved);
     }
-    let current = store.get();
-    let _ = claude_item.set_checked(current.show_claude);
-    let _ = codex_item.set_checked(current.show_codex);
+    settings_changed(app);
+}
+
+/// Brings the Show menu items, ring and tooltip in line with the saved settings.
+pub fn settings_changed(app: &AppHandle) {
+    let settings = app.state::<SettingsStore>().get();
+    let items = app.state::<ShowItems>();
+    let _ = items.claude.set_checked(settings.show_claude);
+    let _ = items.codex.set_checked(settings.show_codex);
+    let snapshot = app.state::<AppState>().snapshot.lock().unwrap().clone();
+    update(app, &snapshot);
 }
 
 /// Skips the shell call when the text is unchanged, since hover fires on every mouse move.

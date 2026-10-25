@@ -72,7 +72,12 @@ impl SettingsStore {
     }
 
     pub fn save(&self, settings: Settings) -> Result<Settings, String> {
-        let settings = Settings { codex_auto_reset: settings.codex_auto_reset.clamped(), ..settings };
+        let mut settings = Settings { codex_auto_reset: settings.codex_auto_reset.clamped(), ..settings };
+        // Hiding both would leave an empty window and a blank ring.
+        if !settings.show_claude && !settings.show_codex {
+            let previous = self.get();
+            (settings.show_claude, settings.show_codex) = (previous.show_claude, previous.show_codex);
+        }
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("Couldn't save settings: {e}"))?;
         }
@@ -105,6 +110,16 @@ mod tests {
             AutoReset { weekly_enabled: true, weekly_percent: 100.0, skip_within_hours: 0.0, five_hour_enabled: false, five_hour_minutes: 60.0 }
         );
         assert_eq!(SettingsStore::load(path.clone()).get(), saved);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn one_provider_always_stays_shown() {
+        let path = std::env::temp_dir().join(format!("ai-usage-shown-{}.json", std::process::id()));
+        let store = SettingsStore::load(path.clone());
+        store.save(Settings { show_claude: false, ..Settings::default() }).unwrap();
+        let saved = store.save(Settings { show_claude: false, show_codex: false, ..Settings::default() }).unwrap();
+        assert!(!saved.show_claude && saved.show_codex);
         std::fs::remove_file(path).unwrap();
     }
 

@@ -18,7 +18,7 @@ const auto = {
   fiveMinutes: $("five-minutes"),
   status: $("auto-status"),
 };
-const settingsInputs = [$("keep-open"), $("always-on-top"), auto.weeklyEnabled, auto.weeklyPercent, auto.skipHours, auto.fiveEnabled, auto.fiveMinutes];
+const settingsInputs = [$("keep-open"), $("always-on-top"), $("show-claude"), $("show-codex"), auto.weeklyEnabled, auto.weeklyPercent, auto.skipHours, auto.fiveEnabled, auto.fiveMinutes];
 
 function setSettingsDisabled(disabled) {
   $("compact-mode").disabled = disabled;
@@ -203,6 +203,8 @@ function showSettings(saved) {
   $("compact-mode").title = settings.compactMode ? "Show full view" : "Compact mode";
   $("keep-open").checked = settings.keepOpen;
   $("always-on-top").checked = settings.alwaysOnTop;
+  $("show-claude").checked = settings.showClaude;
+  $("show-codex").checked = settings.showCodex;
   const a = settings.codexAutoReset;
   auto.weeklyEnabled.checked = a.weeklyEnabled;
   auto.weeklyPercent.value = a.weeklyPercent;
@@ -226,6 +228,8 @@ async function saveSettings() {
     codexAutoReset,
     keepOpen: $("keep-open").checked,
     alwaysOnTop: $("always-on-top").checked,
+    showClaude: $("show-claude").checked,
+    showCodex: $("show-codex").checked,
     compactMode: $("compact-mode").getAttribute("aria-pressed") === "true",
   };
   setSettingsDisabled(true);

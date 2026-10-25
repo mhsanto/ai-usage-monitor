@@ -2,7 +2,7 @@
 
 A Windows 11 tray app that shows how close you are to your AI plan limits.
 Left-click the tray ring for the popover; right-click for Refresh, Show Claude, Show Codex, Start with Windows, and Quit.
-Untick **Show Claude** or **Show Codex** to hide that provider from the window, the ring, and the hover summary.
+Untick **Show Claude** or **Show Codex** (in that menu or in the usage window) to hide that provider from the window, the ring, and the hover summary.
 One of them always stays shown. The choice is saved across restarts.
 
 In the usage window, enable **Keep open** to stop it closing when you click elsewhere.
